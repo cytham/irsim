@@ -11,7 +11,7 @@ This software is created to simulate RNA sequencing datasets (Illumina NGS) with
 2. numpy (1.16.2  or above) [Link](https://scipy.org/install.html)
 3. pyfaidx (0.5.5.2  or above) [Link](https://pypi.org/project/pyfaidx/)
 4. DWGSIM (0.1.11  or above) [Link](https://github.com/nh13/DWGSIM)
-5. A reference geneome file in FASTA format
+5. A reference genome file in FASTA format
 6. cDNA FASTA file
 7. Annotation GTF file
 8. An tab-delimited FPKM model file (Column 1 - Gene id \t Column 2 - FPKM values)
