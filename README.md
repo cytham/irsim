@@ -16,7 +16,7 @@ This software is created to simulate RNA sequencing datasets (Illumina NGS) with
 5. A reference genome file in FASTA format
 6. cDNA FASTA file
 7. Annotation GTF file
-8. An tab-delimited FPKM model file (Column 1 - Gene id \t Column 2 - FPKM values)
+8. A tab-delimited FPKM model file (Column 1 - Gene id \t Column 2 - FPKM values)
 
 ### Clone git repository:
 ```
