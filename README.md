@@ -13,10 +13,6 @@ This software is created to simulate RNA sequencing datasets (Illumina NGS) with
 2. numpy (1.16.2  or above) [Link](https://scipy.org/install.html)
 3. pyfaidx (0.5.5.2  or above) [Link](https://pypi.org/project/pyfaidx/)
 4. DWGSIM (0.1.11  or above) [Link](https://github.com/nh13/DWGSIM)
-5. A reference genome file in FASTA format
-6. cDNA FASTA file
-7. Annotation GTF file
-8. A tab-delimited FPKM model file (Column 1 - Gene id \t Column 2 - FPKM values)
 
 ### Clone git repository:
 ```
@@ -26,7 +22,14 @@ chmod +x irsim
 ```
 
 ## Quick start
-### 1. Edit config.ini file
+### 1. Required input files
+Make sure you have the following input files ready:
+1. A reference genome file in FASTA format
+2. cDNA FASTA file
+3. Annotation GTF file
+4. A tab-delimited FPKM model file (Column 1 - Gene id \t Column 2 - FPKM values)
+
+### 2. Edit config.ini file
 * Add path to DWGSIM directory
 ```
 DWGSIM directory = /path/to/DWGSIM_dir
@@ -41,7 +44,7 @@ Number of replicates for sample WITHOUT intron retention (Control sample) = 2
 Number of threads = 30
 ```
 
-### 2. Run IRSim
+### 3. Run IRSim
 ```
 /path/to/irsim ref_genome.fa cDNA.fa annotation.gtf FPKM_model.tsv config.ini output_directory
 ```
