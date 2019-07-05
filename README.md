@@ -1,10 +1,10 @@
 # IRSim: Simulation of Intron Retention in Coding RNA 
 
-## (WORK IN PROGRESS)
+Latest version 0.0.2
 
-Latest version 0.0.1-pre-alpha
+This software is created to simulate RNA sequencing datasets (Illumina NGS) with pseudo-random intron retention events in coding RNA transcripts. The simulated datasets can be used to evaluate and benchmark intron-retention detection softwares or workflows. IRSim is a software package written in Python3 and employs DWGSIM for NGS read simulation.
 
-This software is created to simulate RNA sequencing datasets (Illumina NGS) with pseudo-random intron retention events in coding RNA transcripts. The simulated datasets can be used to evaluate and benchmark intron-retention detection softwares or workflows. 
+The percent intron retention (PIR) of each retained intron is calculated by \[100 x mean retention reads over the sum of retention and spliced intron reads\] taken from [Braunschweig et al., 2014](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4216919/). 
 
 ## Installation
 
@@ -18,7 +18,7 @@ This software is created to simulate RNA sequencing datasets (Illumina NGS) with
 ```
 git clone https://github.com/cytham/irsim.git 
 cd irsim
-chmod +x irsim-0.0.1-pre-alpha.py
+chmod +x irsim
 ```
 
 ## Quick start
@@ -32,26 +32,21 @@ Make sure you have the following input files ready:
 ### 2. Edit config.ini file
 * Add path to DWGSIM directory
 ```
-DWGSIM directory = /path/to/DWGSIM_dir
-```
-* Add path to Ouput directory
-```
-Output directory = /path/to/output_directory
+DWGSIM directory = /path/to/DWGSIM_directory 
 ```
 * Edit all other parameters to your choice
 ```
-Number of replicates for dataset with intron retention = 1 
-Number of replicates for dataset without intron retention = 1 
+Number of threads = 10 
+Number of replicates for sample A (Experimental sample) = 1
+Number of replicates for sample B (Control sample) = 1
 .
 .
 .
-Number of threads = 10
 ```
-Please note that this version only allows maximum 1 replicate of each dataset due to high memory consumption.
 
 ### 3. Run IRSim
 ```
-/path/to/irsim-0.0.1-pre-alpha.py ref_genome.fa cDNA.fa annotation.gtf FPKM_model.tsv config.ini
+/path/to/irsim ref_genome.fa cDNA.fa annotation.gtf FPKM_model.tsv config.ini output_directory
 ```
 
 ### 3. Output files
@@ -60,6 +55,7 @@ Please note that this version only allows maximum 1 replicate of each dataset du
 
 ## Versioning
 See [Releases](https://github.com/cytham/irsim/releases)
+
 ## Citation
 
 ## Author
