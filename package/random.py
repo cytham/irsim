@@ -25,7 +25,7 @@ import gzip
 import pickle
 import os.path
 import multiprocessing
-from package.reader import take_read_id
+from package.read import take_read_id
 from collections import OrderedDict
 
 #Count number of reads
