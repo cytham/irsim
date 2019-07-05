@@ -4,7 +4,7 @@ Latest version 0.0.2
 
 This software is created to simulate RNA sequencing datasets (Illumina NGS) with pseudo-random intron retention events in coding RNA transcripts. The simulated datasets can be used to evaluate and benchmark intron-retention detection softwares or workflows. IRSim is a software package written in Python3 and employs DWGSIM for NGS read simulation.
 
-The percent intron retention (PIR) of each retained intron is calculated by \[100 x mean retention reads over the sum of retention and spliced intron reads\] taken from [Braunschweig et al., 2014](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4216919/). 
+The percent intron retention (PIR) of each retained intron is calculated by \[100 x mean retention reads divided by the sum of retention reads and spliced intron reads\] as seen in [Braunschweig et al., 2014](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4216919/). 
 
 ## Installation
 
