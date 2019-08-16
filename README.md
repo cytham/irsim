@@ -1,6 +1,6 @@
 # IRSim: Simulation of Intron Retention in Coding RNA 
 
-Latest version 0.0.2
+Latest version 0.0.3
 
 This software is created to simulate RNA sequencing datasets (Illumina NGS) with pseudo-random intron retention events in coding RNA transcripts. The simulated datasets can be used to evaluate and benchmark intron-retention detection softwares or workflows. IRSim is a software package written in Python3 and employs DWGSIM for NGS read simulation.
 
