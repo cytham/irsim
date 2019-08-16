@@ -1,5 +1,5 @@
 """
-Executive.py
+Execute.py
 
 This module simulates FASTQ short-reads using DWGSIM.
 

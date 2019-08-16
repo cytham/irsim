@@ -1,5 +1,5 @@
 """
-Reader.py
+Read.py
 
 This module extracts FASTQ reads from DWGSIM.
 
@@ -20,7 +20,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with IRSim.  If not, see <https://www.gnu.org/licenses/>.
 """
-
+import sys
 import gzip
 import pickle
 import os.path
@@ -31,6 +31,15 @@ from collections import OrderedDict
 #For sorting by read id
 def take_read_id(elem):
     return elem[0].rsplit('_', 1)[1].split('/')[0]
+
+def extract_master(current_gene_list, output_dir, trans_gene_dict, strand_dict, num_threads, stranded):
+    if stranded == "yes":
+        fastq_dict1, fastq_dict2 = multi_thread_extract_fastq_pickle(current_gene_list, output_dir, trans_gene_dict, strand_dict, num_threads)
+    elif stranded == "no":
+        fastq_dict1, fastq_dict2 = multi_thread_extract_fastq_pickle_not_stranded(current_gene_list, output_dir, trans_gene_dict, strand_dict, num_threads)
+    else:
+        sys.exit("ERROR: Unknown string for 'Strand-specific' in config file, please indicate yes/no.")
+    return dict(fastq_dict1), dict(fastq_dict2)
 
 #Extract fastq and sort strandness (Multi_thread, Pickle)
 def extract_fastq_pickle(fastq_name, output_dir, trans_gene_dict, strand_dict):
@@ -210,29 +219,46 @@ def extract_fastq_pickle_not_stranded(fastq_name, output_dir, trans_gene_dict):
     pickle2.close()
 
 #Multiprocessing extract_fastq (Pickle) not_stranded
-def multi_thread_extract_fastq_pickle_not_stranded(output_dir, trans_gene_dict, strand_dict, num_threads):    
+def multi_thread_extract_fastq_pickle_not_stranded(current_gene_list, output_dir, trans_gene_dict, strand_dict, num_threads):    
     #manager = multiprocessing.Manager()
     #dict1 = manager.dict()
     #dict2 = manager.dict()
     jobs = []
-    for index in range(int(num_threads)):
-        p = multiprocessing.Process(target=extract_fastq_pickle_not_stranded, args=('tmp' + str(index) + '.fa.out.bwa', output_dir, trans_gene_dict))
-        jobs.append(p)
-        p.start()
+    if len(current_gene_list) >= num_threads:
+        for index in range(int(num_threads)):
+            p = multiprocessing.Process(target=extract_fastq_pickle_not_stranded, args=('tmp' + str(index) + '.fa.out.bwa', output_dir, trans_gene_dict))
+            jobs.append(p)
+            p.start()
+    else:
+        for index in range(len(current_gene_list)):
+            p = multiprocessing.Process(target=extract_fastq_pickle_not_stranded, args=('tmp' + str(index) + '.fa.out.bwa', output_dir, trans_gene_dict))
+            jobs.append(p)
+            p.start()
     for job in jobs:
         job.join()
     fastq_dict1 = OrderedDict()
     fastq_dict2 = OrderedDict()
     #Unpickle
-    for index in range(int(num_threads)):
-        pickle1 = open(os.path.join(output_dir, 'tmp' + str(index) + '.fa.out.bwa') + '1.pkl', 'rb')
-        pickle2 = open(os.path.join(output_dir, 'tmp' + str(index) + '.fa.out.bwa') + '2.pkl', 'rb')
-        dict1 = pickle.load(pickle1)
-        dict2 = pickle.load(pickle2)
-        pickle1.close()
-        pickle2.close()
-        fastq_dict1.update(dict1)
-        fastq_dict2.update(dict2)
+    if len(current_gene_list) >= num_threads:
+        for index in range(int(num_threads)):
+            pickle1 = open(os.path.join(output_dir, 'tmp' + str(index) + '.fa.out.bwa') + '1.pkl', 'rb')
+            pickle2 = open(os.path.join(output_dir, 'tmp' + str(index) + '.fa.out.bwa') + '2.pkl', 'rb')
+            dict1 = pickle.load(pickle1)
+            dict2 = pickle.load(pickle2)
+            pickle1.close()
+            pickle2.close()
+            fastq_dict1.update(dict1)
+            fastq_dict2.update(dict2)
+    else:
+        for index in range(len(current_gene_list)):
+            pickle1 = open(os.path.join(output_dir, 'tmp' + str(index) + '.fa.out.bwa') + '1.pkl', 'rb')
+            pickle2 = open(os.path.join(output_dir, 'tmp' + str(index) + '.fa.out.bwa') + '2.pkl', 'rb')
+            dict1 = pickle.load(pickle1)
+            dict2 = pickle.load(pickle2)
+            pickle1.close()
+            pickle2.close()
+            fastq_dict1.update(dict1)
+            fastq_dict2.update(dict2)
     return dict(fastq_dict1), dict(fastq_dict2)
 
 #Make fragment_dict
@@ -244,22 +270,27 @@ def make_fragment_dict(fastq_dict, intron_dict, intron_prop_dict, fpkm_dict, tra
     for transcript_id in fastq_dict:
         transcript = transcript_id[1:].split('-')[0]
         transcript_perc_var_dict[transcript] = np.random.uniform(-max_rep_var/100,max_rep_var/100) + 1
-    if dataset_type == 'intron':
-        for transcript_id in fastq_dict:
-            transcript = transcript_id[1:].split('-')[0]
-            #Check if transcript is exonic or intronic
-            if transcript_id[-1] == 'e':
-                #Check if transcript has intron partner
-                if trans_gene_dict[transcript] in intron_dict:
-                    transcript_frag_dict[transcript_id] = round((((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*(1-intron_prop_dict[trans_gene_dict[transcript]]))*transcript_perc_var_dict[transcript])
-                    real_frag_dict[transcript_id] = round((((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*(1-intron_prop_dict[trans_gene_dict[transcript]]))*transcript_perc_var_dict[transcript])
-                else:
-                    transcript_frag_dict[transcript_id] = round(((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*transcript_perc_var_dict[transcript])
-                    real_frag_dict[transcript_id] = round(((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*transcript_perc_var_dict[transcript])
-            elif transcript_id[-1] == 'i':
-                #Decipher number of fragments
+    #if dataset_type == 'intron':
+    for transcript_id in fastq_dict:
+        transcript = transcript_id[1:].split('-')[0]
+        #Check if transcript is exonic or intronic
+        if transcript_id[-1] == 'e':
+            #Check if transcript has intron partner
+            if trans_gene_dict[transcript] in intron_dict:
+                transcript_frag_dict[transcript_id] = round((((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*(1-intron_prop_dict[trans_gene_dict[transcript]]))*transcript_perc_var_dict[transcript])
+                real_frag_dict[transcript_id] = round((((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*(1-intron_prop_dict[trans_gene_dict[transcript]]))*transcript_perc_var_dict[transcript])
+            else:
+                transcript_frag_dict[transcript_id] = round(((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*transcript_perc_var_dict[transcript])
+                real_frag_dict[transcript_id] = round(((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*transcript_perc_var_dict[transcript])
+        elif transcript_id[-1] == 'i':
+            #Check if transcript-intronic is supposed to be simulated (for control sample)
+            if trans_gene_dict[transcript] in intron_dict:
+            #Decipher number of fragments
                 transcript_frag_dict[transcript_id] = round((((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*intron_prop_dict[trans_gene_dict[transcript]])*transcript_perc_var_dict[transcript]*(intron_size_dict[transcript]/cdna_size_dict[transcript]))
                 real_frag_dict[transcript_id] = round((((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/2/1000000))*intron_prop_dict[trans_gene_dict[transcript]])*transcript_perc_var_dict[transcript])
+    return dict(transcript_frag_dict), dict(real_frag_dict)
+
+'''
     elif dataset_type == 'control':
         for transcript_id in fastq_dict:
             transcript = transcript_id[1:].split('-')[0]
@@ -267,4 +298,4 @@ def make_fragment_dict(fastq_dict, intron_dict, intron_prop_dict, fpkm_dict, tra
             if transcript_id[-1] == 'e':
                 transcript_frag_dict[transcript_id] = round(((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/1000000)/2)*transcript_perc_var_dict[transcript])
                 real_frag_dict[transcript_id] = round(((fpkm_dict[trans_gene_dict[transcript]]*(cdna_size_dict[transcript]/1000))*(num_read*(1-ran_read)/1000000)/2)*transcript_perc_var_dict[transcript])
-    return dict(transcript_frag_dict), dict(real_frag_dict)
+'''

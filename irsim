@@ -33,14 +33,14 @@ from sys import argv
 from collections import OrderedDict
 from subprocess import DEVNULL, STDOUT, check_call
 
-from package.guardian import *
-from package.creator import *
-from package.executive import *
-from package.reader import *
-from package.composer import *
-from package.angel import *
-from package.sweeper import *
-from package.jester import *
+from package.parse import *
+from package.create import *
+from package.execute import *
+from package.read import *
+from package.compose import *
+from package.report import *
+from package.sweep import *
+from package.random import *
 
 # Assign random seed
 def assign_seed(seed):
@@ -49,12 +49,14 @@ def assign_seed(seed):
     except:
         np.random.seed(None)
 
+#Verbosity
+def check_verbose(verbose):
+    if verbose == "no":
+        sys.stdout = open(os.devnull, 'w')
+
 def main():
     if len(argv) != 7:
         sys.exit("Usage: irsim ref_genome.fa cDNA.fa annotation.gtf FPKM_model.tsv config.ini output_dir")
-    now = datetime.datetime.now()
-    print("IRSim started...")
-    print(now)
     ref_file = argv[1]
     cdna_file = argv[2]
     gtf_file = argv[3]
@@ -65,7 +67,7 @@ def main():
     #cdna_file = 'Drosophila_melanogaster.BDGP6.22.cdna.all.fa'
     #gtf_file = 'Drosophila_melanogaster.BDGP6.22.96.gtf'
     #model_file = 'RNASEQ-GeneExp_FPKM_nomt_model_D50.tsv'
-    #config_file = 'config2.ini'
+    #config_file = 'config3.ini'
     start_time = time.time()
     #Setup config
     config = configparser.ConfigParser()
@@ -73,11 +75,13 @@ def main():
     # Check config.ini file
     config_checker(config)
     dwgsim_dir = config['Paths']['DWGSIM directory']
-    total_intron_reps = config['Sequencing details']['Number of replicates for sample WITH intron retention (Experimental sample)']
-    total_control_reps = config['Sequencing details']['Number of replicates for sample WITHOUT intron retention (Control sample)']
+    num_threads = config['Threads']['Number of threads']
+    total_intron_reps = config['Sequencing details']['Number of replicates for sample A (Experimental sample)']
+    total_control_reps = config['Sequencing details']['Number of replicates for sample B (Control sample)']
+    ir_in_control = config['Sequencing details']['Simulate intron retention in sample B (yes/no)']
     #total_reps = int(intron_reps) + int(control_reps)
     max_rep_var = config['Sequencing details']['Maximum percent variance of read counts between replicates (%)']
-    num_read = config['Sequencing details']['Number of reads per replicate']
+    num_read = config['Sequencing details']['Minimum number of reads per sample/replicate']
     #paired = config['Sequencing details']['Paired-end sequencing']
     stranded = config['Sequencing details']['Strand-specific (yes/no)']
     read_length = config['Sequencing details']['Read length in bases']
@@ -95,16 +99,20 @@ def main():
     intron_len1 = config['Intron retention']['Probability of retaining an intron with length more than 1000 bases']
     intron_len2 = config['Intron retention']['Probability of retaining an intron with length between 100-1000 bases']
     intron_len3 = config['Intron retention']['Probability of retaining an intron with length less than 100 bases']
-    intron_proportion_list = config['Intron retention']['Range of Percent Intron Retention (PIR) of each intron (%)']
+    intron_proportion_list = config['Intron retention']['Set of possible Percent Intron Retention (PIR) for each intron (%)']
     lower_FPKM = config['Gene expression']['Lower limit of FPKM in the provided gene expression model']
     upper_FPKM = config['Gene expression']['Upper limit of FPKM in the provided gene expression model']
     seed = int(config['Seed']['Random seed'])
-    num_threads = config['Threads']['Number of threads']
-    mem_level = config['Memory consumption']['Memory consumption level (1 ~ <50Gb; 2 ~ <100Gb; 3 ~ <150Gb)']
+    verbose = config['Verbosity']['Verbose (yes/no)']
+    #mem_level = config['Memory consumption']['Memory consumption level (1 ~ <50Gb; 2 ~ <100Gb; 3 ~ <150Gb)']
     # Assign random seed (For same intron simulation)
     assign_seed(seed)
-    # Change seed to generate different reads
-    #seed = 3
+    #Set verbosity
+    check_verbose(verbose)
+    #Set start time
+    now = datetime.datetime.now().replace(microsecond=0)
+    print("\nIRSim started...")
+    print(now)
     # Check output_dir exist
     check_dir_file_exist(ref_file, cdna_file, gtf_file, model_file, config_file, output_dir)
     # Configure replicates
@@ -115,55 +123,61 @@ def main():
     gene_list, intron_list, transcript_dict, strand_dict, biotype_dict, trans_gene_dict, transcript_coord_dict = get_intron_info(gtf_file, fpkm_dict)
     # Select introns to retain
     intron_dict_main, intron_prop_dict = select_introns(intron_list, float(perc_intron)/100, float(intron_len1), float(intron_len2), float(intron_len3), intron_proportion_list.split(','), strand_dict)
-    # Prepare output report
-    first_line, outline_dict = pre_output_info(intron_list, strand_dict)
+    intron_prop_dict_ctrl = select_ctrl_intron_prop(intron_dict_main, intron_proportion_list.split(','))
     r = 0
     for replicate in total_rep_names_dict:
         seed += r
         # Assign random seed (Different for each replicate/sample)
         assign_seed(seed)
         r += 1
-        print("--- %s seconds --- Simulation round %s out of %s" % (time.time() - start_time, r, len(total_rep_names_dict)))
-        if replicate[0] == 'i':
+        print("# Simulation round %s out of %s" % (r, len(total_rep_names_dict)))
+        if replicate[0] == 'A':
             intron_reps = 1
             control_reps = 0
             intron_dict = intron_dict_main
-        elif replicate[0] == 'c':
+        elif replicate[0] == 'B':
             intron_reps = 0
             control_reps = 1
-            intron_dict = {}
+            if ir_in_control == 'yes':
+                intron_dict = intron_dict_main
+            elif ir_in_control == 'no':
+                intron_dict = {}
+                intron_prop_dict_ctrl = {}
         total_reps = 1
         # Make intronic transcripts
         fasta_dict, total_len, cdna_size_dict, intron_size_dict, junc_dict = make_transcripts(gene_list, intron_dict, transcript_dict, ref_file, cdna_file, strand_dict)
         # Check transcript lengths
-        fasta_dict = check_cdna_len(cdna_size_dict, float(ins_length), float(ins_length_stdev), fasta_dict)
+        fasta_dict, omit_gene_len_list = check_cdna_len(cdna_size_dict, float(ins_length), float(ins_length_stdev), fasta_dict)
+        if r == 1:
+            # Prepare output report
+            first_line, outline_dict = pre_output_info(intron_list, strand_dict, omit_gene_len_list)
         # Coverage saturation checker
         fpkm_dict = coverage_check(gene_list, fpkm_dict, lowest_FPKM, int(num_read), cdna_size_dict, transcript_dict, biotype_dict, int(ins_length), int(ins_length_stdev), float(ran_read), trans_gene_dict)
         # Write transcriptome FASTA file 1
         write_fasta(fasta_dict, output_dir)
         # Decipher amount of simulated reads to suit 20% of transcripts FPKM
         sim1_num_frags, percentile_FPKM = sim_amount(gene_list, fpkm_dict, int(num_read), total_len, 20, fasta_dict, total_reps)
-        print("--- %s seconds --- Simulation part 1.0/5.0 configuration" % (time.time() - start_time))
+        print("- Simulation part 1.0/5.0 configuration --- %s sec" % (round(time.time() - start_time, 1)))
         # Split reference fasta to multiple fasta files according to number of threads
         split_fasta(output_dir, 'transcriptome.fa', int(num_threads), len(fasta_dict))
         # Run multi dwgsim
         multi_subprocess_dwgsim(gene_list, dwgsim_dir, output_dir, int(num_threads), first_read_error, second_read_error, ins_length, ins_length_stdev, sim1_num_frags, read_length, mut_rate, indel_rate, indel_ext, indel_len, mock_ran_read, seed)
-        print("--- %s seconds --- Simulation part 1.0/5.0 reads generated" % (time.time() - start_time))
+        print("- Simulation part 1.0/5.0 reads generated --- %s sec" % (round(time.time() - start_time, 1)))
         # Create list for random reads
         rand_read_list = []
         # Multiprocessing extract fastq
-        fastq_dict1, fastq_dict2 = multi_thread_extract_fastq_pickle(gene_list, output_dir, trans_gene_dict, strand_dict, int(num_threads))
-        print("--- %s seconds --- Simulation part 1.0/5.0 reads extracted" % (time.time() - start_time))
+        fastq_dict1, fastq_dict2 = extract_master(gene_list, output_dir, trans_gene_dict, strand_dict, int(num_threads), stranded)
+        print("- Simulation part 1.0/5.0 reads extracted --- %s sec" % (round(time.time() - start_time, 1)))
         # Reassign random seed (For different read count simulation)
         #assign_seed(seed)
         # First and only make transcript_frag_dict for each rep
         transcript_frag_dict = OrderedDict()
         real_frag_dict = OrderedDict()
         for i in range(int(intron_reps)):
-            transcript_frag_dict['i-' + str(len(transcript_frag_dict))], real_frag_dict['i-' + str(len(real_frag_dict))] = make_fragment_dict(fastq_dict1, intron_dict, intron_prop_dict, fpkm_dict, trans_gene_dict, int(num_read), cdna_size_dict, float(max_rep_var), 'intron', float(ran_read), intron_size_dict)
+            transcript_frag_dict['A-' + str(len(transcript_frag_dict))], real_frag_dict['A-' + str(len(real_frag_dict))] = make_fragment_dict(fastq_dict1, intron_dict, intron_prop_dict, fpkm_dict, trans_gene_dict, int(num_read), cdna_size_dict, float(max_rep_var), 'intron', float(ran_read), intron_size_dict)
         #spacer
         for i in range(int(control_reps)):
-            transcript_frag_dict['c-' + str(len(transcript_frag_dict))], real_frag_dict['c-' + str(len(real_frag_dict))] = make_fragment_dict(fastq_dict1, intron_dict, intron_prop_dict, fpkm_dict, trans_gene_dict, int(num_read), cdna_size_dict, float(max_rep_var), 'control', float(ran_read), intron_size_dict)
+            transcript_frag_dict['B-' + str(len(transcript_frag_dict))], real_frag_dict['B-' + str(len(real_frag_dict))] = make_fragment_dict(fastq_dict1, intron_dict, intron_prop_dict_ctrl, fpkm_dict, trans_gene_dict, int(num_read), cdna_size_dict, float(max_rep_var), 'control', float(ran_read), intron_size_dict)
         #spacer
         # Make out files
         #rep_names_dict = make_out_files(output_dir, transcript_frag_dict, int(intron_reps), int(control_reps))
@@ -174,39 +188,53 @@ def main():
         read_junc_dict, total_intron_dict = junc_count_prep(intron_list, junc_dict, rep_names_dict)
         # Create fastq lists and write fastq
         multi_fastq_list_write(num_threads, transcript_frag_dict, fastq_dict1, fastq_dict2, total_reps, output_dir, rep_names_dict, chunks_dict, junc_dict, read_junc_dict, total_intron_dict, read_length)
-        print("--- %s seconds --- Simulation part 1.0/5.0 completed" % (time.time() - start_time))
+        print("- Simulation part 1.0/5.0 completed --- %s sec" % (round(time.time() - start_time, 1)))
         # Clear memory and delete files
         multi_clear(gene_list, fastq_dict1, fastq_dict2, output_dir, int(num_threads), rep_names_dict)
         # Multiple rounds with increasing percentile
         for percentile in [40, 60, 80, 90, 100]:
             new_len, new_gene_list = update_fasta_dict(fasta_dict, transcript_frag_dict, trans_gene_dict)
-            write_fasta(fasta_dict, output_dir)
-            sim1_num_frags, percentile_FPKM = sim_amount2(new_gene_list, fpkm_dict, new_len, percentile, total_reps, transcript_frag_dict, transcript_dict, cdna_size_dict)
-            print("--- %s seconds --- Simulation part %s/5.0 configuration" % (time.time() - start_time, round(percentile/20,1)))
-            split_fasta(output_dir, 'transcriptome.fa', int(num_threads), len(fasta_dict))
-            multi_subprocess_dwgsim(new_gene_list, dwgsim_dir, output_dir, int(num_threads), first_read_error, second_read_error, ins_length, ins_length_stdev, sim1_num_frags, read_length, mut_rate, indel_rate, indel_ext, indel_len, mock_ran_read, seed)
-            print("--- %s seconds --- Simulation part %s/5.0 reads generated" % (time.time() - start_time, round(percentile/20,1)))
-            fastq_dict1, fastq_dict2 = multi_thread_extract_fastq_pickle(new_gene_list, output_dir, trans_gene_dict, strand_dict, int(num_threads))
-            print("--- %s seconds --- Simulation part %s/5.0 reads extracted" % (time.time() - start_time, round(percentile/20,1)))
-            chunks_dict = read_index_chunks(transcript_frag_dict, fastq_dict1)
-            multi_fastq_list_write(num_threads, transcript_frag_dict, fastq_dict1, fastq_dict2, total_reps, output_dir, rep_names_dict, chunks_dict, junc_dict, read_junc_dict, total_intron_dict, read_length)
-            print("--- %s seconds --- Simulation part %s/5.0 completed" % (time.time() - start_time, round(percentile/20,1)))
-            multi_clear(new_gene_list, fastq_dict1, fastq_dict2, output_dir, int(num_threads), rep_names_dict)
+            if len(new_gene_list) > 0:
+                write_fasta(fasta_dict, output_dir)
+                sim1_num_frags, percentile_FPKM = sim_amount2(new_gene_list, fpkm_dict, new_len, percentile, total_reps, transcript_frag_dict, transcript_dict, cdna_size_dict)
+                print("- Simulation part %s/5.0 configuration --- %s sec" % (round(percentile/20,1), round(time.time() - start_time, 1)))
+                split_fasta(output_dir, 'transcriptome.fa', int(num_threads), len(fasta_dict))
+                multi_subprocess_dwgsim(new_gene_list, dwgsim_dir, output_dir, int(num_threads), first_read_error, second_read_error, ins_length, ins_length_stdev, sim1_num_frags, read_length, mut_rate, indel_rate, indel_ext, indel_len, mock_ran_read, seed)
+                print("- Simulation part %s/5.0 reads generated --- %s sec" % (round(percentile/20,1), round(time.time() - start_time, 1)))
+                fastq_dict1, fastq_dict2 = extract_master(new_gene_list, output_dir, trans_gene_dict, strand_dict, int(num_threads), stranded)
+                print("- Simulation part %s/5.0 reads extracted --- %s sec" % (round(percentile/20,1), round(time.time() - start_time, 1)))
+                for rep in transcript_frag_dict: #At low transcript simulation amounts, sometimes DWGSIM does not simulate some transcripts.
+                    for transcript in transcript_frag_dict[rep]:
+                        if transcript not in fastq_dict1:
+                            fastq_dict1[transcript] = []
+                            fastq_dict2[transcript] = []
+                chunks_dict = read_index_chunks(transcript_frag_dict, fastq_dict1)
+                multi_fastq_list_write(num_threads, transcript_frag_dict, fastq_dict1, fastq_dict2, total_reps, output_dir, rep_names_dict, chunks_dict, junc_dict, read_junc_dict, total_intron_dict, read_length)
+                print("- Simulation part %s/5.0 completed --- %s sec" % (round(percentile/20,1), round(time.time() - start_time, 1)))
+                multi_clear(new_gene_list, fastq_dict1, fastq_dict2, output_dir, int(num_threads), rep_names_dict)
+            else:
+                print("- Simulation part %s/5.0 not required - Skipping --- %s sec" % (round(percentile/20,1), round(time.time() - start_time, 1)))
         #spacer
+        #Generate extras
         percentile = 100
         new_len, new_gene_list = update_fasta_dict(fasta_dict, transcript_frag_dict, trans_gene_dict)
         while len(fasta_dict) > 0:
             write_fasta(fasta_dict, output_dir)
             sim1_num_frags, percentile_FPKM = sim_amount2(new_gene_list, fpkm_dict, new_len, percentile, total_reps, transcript_frag_dict, transcript_dict, cdna_size_dict)
-            print("--- %s seconds --- Simulation part %s/5.0 configuration (Extra)" % (time.time() - start_time, round(percentile/20,1)))
+            print("- Simulation part %s/5.0 configuration (Extra) --- %s sec --- " % (round(percentile/20,1), round(time.time() - start_time, 1)))
             split_fasta(output_dir, 'transcriptome.fa', int(num_threads), len(fasta_dict))
             multi_subprocess_dwgsim(new_gene_list, dwgsim_dir, output_dir, int(num_threads), first_read_error, second_read_error, ins_length, ins_length_stdev, sim1_num_frags, read_length, mut_rate, indel_rate, indel_ext, indel_len, mock_ran_read, seed)
-            print("--- %s seconds --- Simulation part %s/5.0 reads generated (Extra)" % (time.time() - start_time, round(percentile/20,1)))
-            fastq_dict1, fastq_dict2 = multi_thread_extract_fastq_pickle(new_gene_list, output_dir, trans_gene_dict, strand_dict, int(num_threads))
-            print("--- %s seconds --- Simulation part %s/5.0 reads extracted (Extra)" % (time.time() - start_time, round(percentile/20,1)))
+            print("- Simulation part %s/5.0 reads generated (Extra) --- %s sec --- " % (round(percentile/20,1), round(time.time() - start_time, 1)))
+            fastq_dict1, fastq_dict2 = extract_master(new_gene_list, output_dir, trans_gene_dict, strand_dict, int(num_threads), stranded)
+            print("- Simulation part %s/5.0 reads extracted (Extra) --- %s sec --- " % (round(percentile/20,1), round(time.time() - start_time, 1)))
+            for rep in transcript_frag_dict: #At low transcript simulation amounts, sometimes DWGSIM does not simulate some transcripts.
+                for transcript in transcript_frag_dict[rep]:
+                    if transcript not in fastq_dict1:
+                        fastq_dict1[transcript] = []
+                        fastq_dict2[transcript] = []
             chunks_dict = read_index_chunks(transcript_frag_dict, fastq_dict1)
             multi_fastq_list_write(num_threads, transcript_frag_dict, fastq_dict1, fastq_dict2, total_reps, output_dir, rep_names_dict, chunks_dict, junc_dict, read_junc_dict, total_intron_dict, read_length)
-            print("--- %s seconds --- Simulation part %s/5.0 completed (Extra)" % (time.time() - start_time, round(percentile/20,1)))
+            print("- Simulation part %s/5.0 completed (Extra) --- %s sec --- " % (round(percentile/20,1), round(time.time() - start_time, 1)))
             multi_clear(new_gene_list, fastq_dict1, fastq_dict2, output_dir, int(num_threads), rep_names_dict)
             new_len, new_gene_list = update_fasta_dict(fasta_dict, transcript_frag_dict, trans_gene_dict)
         #spacer
@@ -218,24 +246,25 @@ def main():
         mock_fasta(output_dir, int(num_threads))
         # Simulate random reads
         multi_subprocess_dwgsim(gene_list, dwgsim_dir, output_dir, int(num_threads), first_read_error, second_read_error, ins_length, ins_length_stdev, num_ran_reads, read_length, mut_rate, indel_rate, indel_ext, indel_len, 1, seed)
-        print("--- %s seconds --- Simulated random reads" % (time.time() - start_time))
+        print("- Simulated random reads --- %s sec --- " % (round(time.time() - start_time, 1)))
         ran_fastq_dict1, ran_fastq_dict2 = multi_thread_extract_random_fastq_pickle(output_dir, trans_gene_dict, strand_dict, int(num_threads))
         random_reads_write(read_count_dict, ran_fastq_dict1, ran_fastq_dict2, output_dir, rep_names_dict, int(num_read))
-        print("--- %s seconds --- Finished writing random reads." % (time.time() - start_time))
+        print("- Finished writing random reads --- %s sec --- " % (round(time.time() - start_time, 1)))
         # Clear memory and delete files
         multi_clear(gene_list, fastq_dict1, fastq_dict2, output_dir, int(num_threads), rep_names_dict)
         check_call(['rm', os.path.join(output_dir, 'transcriptome.fa')], stdout=DEVNULL, stderr=STDOUT)
-        first_line, outline_dict = output_info_rep(first_line, outline_dict, intron_list, read_junc_dict, rep_names_dict)
-        print("--- %s seconds --- Prepared report information." % (time.time() - start_time))
+        first_line, outline_dict = output_info_rep(first_line, outline_dict, intron_list, read_junc_dict, rep_names_dict, omit_gene_len_list)
+        print("- Extracting information for report --- %s sec --- " % (round(time.time() - start_time, 1)))
     intron_dict = intron_dict_main
     # Writing final output report file
-    output_info_final(first_line, outline_dict, intron_list, intron_dict, output_dir, fpkm_dict, intron_prop_dict)
+    output_info_final(first_line, outline_dict, intron_list, intron_dict, output_dir, fpkm_dict, intron_prop_dict, intron_prop_dict_ctrl, omit_gene_len_list)
     #output_info(intron_list, intron_dict, real_frag_dict, read_junc_dict, output_dir, strand_dict, fpkm_dict, intron_prop_dict, rep_names_dict)
     # Compress fastq to gz format
+    print("- Compressing files... --- %s sec --- " % (round(time.time() - start_time, 1)))
     compress_multi(total_rep_names_dict, output_dir, int(num_threads), len(total_rep_names_dict))
     #compress_multi(rep_names_dict, output_dir, int(num_threads), total_reps)
-    print("--- %s seconds --- IRSim finished." % (time.time() - start_time))
-    now = datetime.datetime.now()
+    print("IRSim finished --- %s sec --- " % (round(time.time() - start_time, 1)))
+    now = datetime.datetime.now().replace(microsecond=0)
     print(now)
 
 if __name__ == '__main__':

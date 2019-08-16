@@ -1,5 +1,5 @@
 """
-Sweeper.py
+Sweep.py
 
 This module clears memory and removes unused files.
 

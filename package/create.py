@@ -1,5 +1,5 @@
 """
-Creator.py
+Create.py
 
 This module simulates a transcriptome and randomly creates intron retained transcripts.
 
@@ -49,6 +49,42 @@ def ge_extract(model_file, minimum_FPKM, maximum_FPKM):
         sys.exit("ERROR: Assigned lower limit FPKM value %s is less than 0." % (minimum_FPKM))
     return dict(fpkm_dict), lowest_FPKM, highest_FPKM
 
+#Parse GTF attribute column into dictionary, also does checking
+def gtf_attribute_parser_gene_id(gtf_line, gtf_line_next, index, index_next):
+    attr_dict = OrderedDict()
+    attr_dict_next = OrderedDict()
+    attribute_list = gtf_line.split('\t')[8].split(';')
+    attribute_list_next = gtf_line_next.split('\t')[8].split(';')
+    attribute_list = filter(None, attribute_list)
+    attribute_list_next = filter(None, attribute_list_next)
+    for item in attribute_list:
+        attr_dict[item.strip().split(' ')[0]] = item.strip().split(' ')[1].strip('\"\'')
+    if 'gene_id' not in attr_dict:
+        sys.exit("ERROR: gene_id not found in GTF attributes column in line %s." % str(index+1))
+    for item in attribute_list_next:
+        attr_dict_next[item.strip().split(' ')[0]] = item.strip().split(' ')[1].strip('\"\'')
+    if 'gene_id' not in attr_dict_next:
+        sys.exit("ERROR: gene_id not found in GTF attributes column in line %s." % str(index_next+1))
+    return dict(attr_dict), dict(attr_dict_next)
+
+#Parse GTF attribute column into dictionary, also does checking
+def gtf_attribute_parser_exon(gtf_line, index):
+    attr_dict = OrderedDict()
+    attribute_list = gtf_line.split('\t')[8].split(';')
+    attribute_list = filter(None, attribute_list)
+    for item in attribute_list:
+        attr_dict[item.strip().split(' ')[0]] = item.strip().split(' ')[1].strip('\"\'')
+    if 'gene_id' not in attr_dict:
+        sys.exit("ERROR: gene_id not found in GTF attributes column in line %s." % str(index+1))
+    if 'transcript_id' not in attr_dict:
+        sys.exit("ERROR: transcript_id not found in GTF attributes column in line %s." % str(index+1))
+    if 'gene_biotype' not in attr_dict:
+        if 'gene_type' not in attr_dict:
+            sys.exit("ERROR: gene_biotype/gene_type not found in GTF attributes column in line %s." % str(index+1))
+    else:
+        attr_dict['gene_type'] = attr_dict['gene_biotype']
+    return dict(attr_dict)
+
 #Obtain intron information (The first transcript of each gene ordered in the GTF file is selected as the only transcript)
 def get_intron_info(gtf_file, fpkm_dict):
     gtf = open(gtf_file, 'r').read().splitlines()
@@ -72,17 +108,18 @@ def get_intron_info(gtf_file, fpkm_dict):
     for index in range(num_lines):
         #Ignore comment lines
         if not gtf[index].strip().startswith("#"):
+            attr_dict, attr_dict_next = gtf_attribute_parser_gene_id(gtf[index], gtf[index+1], index, index+1)
             #Check next line for same gene_id and make exon list(Ensure GTF uses double quotes and correct columns) Col: gene_id,transcript_id,chr,start,end,strand
-            if gtf[index].split('\t')[8].split(';')[0].split('"')[1] == gtf[index+1].split('\t')[8].split(';')[0].split('"')[1]:
+            if attr_dict['gene_id'] == attr_dict_next['gene_id']:
                 if gtf[index].split('\t')[2] == "exon":
-                    exon_tmp_list.append([str(gtf[index].split('\t')[8].split(';')[0].split('"')[1]), str(gtf[index].split('\t')[8].split(';')[1].split('"')[1]), str(gtf[index].split('\t')[0]), int(gtf[index].split('\t')[3]), int(gtf[index].split('\t')[4]), str(gtf[index].split('\t')[6])])
-                    biotype_dict[gtf[index].split('\t')[8].split(';')[0].split('"')[1]] = gtf[index].split('\t')[8].split(';')[5].split('"')[1]
-                    #biotype_dict_transcript[gtf[index].split('\t')[8].split(';')[1].split('"')[1]] = gtf[index].split('\t')[8].split(';')[5].split('"')[1]
+                    attr_dict = gtf_attribute_parser_exon(gtf[index], index)
+                    exon_tmp_list.append([attr_dict['gene_id'], attr_dict['transcript_id'], str(gtf[index].split('\t')[0]), int(gtf[index].split('\t')[3]), int(gtf[index].split('\t')[4]), str(gtf[index].split('\t')[6])])
+                    biotype_dict[attr_dict['gene_id']] = attr_dict['gene_type']
             else:
                 if gtf[index].split('\t')[2] == "exon":
-                    exon_tmp_list.append([str(gtf[index].split('\t')[8].split(';')[0].split('"')[1]), str(gtf[index].split('\t')[8].split(';')[1].split('"')[1]), str(gtf[index].split('\t')[0]), int(gtf[index].split('\t')[3]), int(gtf[index].split('\t')[4]), str(gtf[index].split('\t')[6])])
-                    biotype_dict[gtf[index].split('\t')[8].split(';')[0].split('"')[1]] = gtf[index].split('\t')[8].split(';')[5].split('"')[1]
-                    #biotype_dict_transcript[gtf[index].split('\t')[8].split(';')[1].split('"')[1]] = gtf[index].split('\t')[8].split(';')[5].split('"')[1]
+                    attr_dict = gtf_attribute_parser_exon(gtf[index], index)
+                    exon_tmp_list.append([attr_dict['gene_id'], attr_dict['transcript_id'], str(gtf[index].split('\t')[0]), int(gtf[index].split('\t')[3]), int(gtf[index].split('\t')[4]), str(gtf[index].split('\t')[6])])
+                    biotype_dict[attr_dict['gene_id']] = attr_dict['gene_type']
                 #Check if gene is in selected list
                 if exon_tmp_list[0][0] in fpkm_dict:
                     #Check if gene is protein coding
@@ -121,11 +158,6 @@ def get_intron_info(gtf_file, fpkm_dict):
                             sys.exit("ERROR: Gene %s strandness neither + nor -" % (exon_tmp_list[0][0]))
                 intron_size = 0
                 exon_tmp_list = []
-    #Get transcript coordinates
-    for line in gtf:
-        if not line.strip().startswith("#"):
-            if line.split('\t')[2] == 'transcript':
-                transcript_coord_dict[str(line.split('\t')[8].split(';')[1].split('"')[1])] = line.split('\t')[0] + ':' + line.split('\t')[3] + '-' + line.split('\t')[4] + ';' + line.split('\t')[6]
     return gene_list, intron_list, dict(transcript_dict), dict(strand_dict), dict(biotype_dict), dict(trans_gene_dict), dict(transcript_coord_dict)
 
 #Take seventh element
@@ -149,17 +181,17 @@ def select_introns(intron_list, intron_perc, top, mid, bot, prop_list, strand_di
         for i in intron_list:
             if i not in selected_introns:
                 if i[-1] > 1000:
-                    if np.random.uniform(0.0, 1.0) >= top:
+                    if np.random.uniform(0.0, 1.0) < top:
                         selected_introns.append(i)
                         intron_prop_dict[i[0]] = float(np.random.choice(prop_list).strip())/100
                         num += 1
                 elif 100 <= i[-1] <= 1000:
-                    if np.random.uniform(0.0, 1.0) >= mid:
+                    if np.random.uniform(0.0, 1.0) < mid:
                         selected_introns.append(i)
                         intron_prop_dict[i[0]] = float(np.random.choice(prop_list).strip())/100
                         num += 1
                 elif i[-1] < 100:
-                    if np.random.uniform(0.0, 1.0) >= bot:
+                    if np.random.uniform(0.0, 1.0) < bot:
                         selected_introns.append(i)
                         intron_prop_dict[i[0]] = float(np.random.choice(prop_list).strip())/100
                         num += 1
@@ -179,6 +211,13 @@ def select_introns(intron_list, intron_perc, top, mid, bot, prop_list, strand_di
         elif strand_dict[gene] == '-':
             intron_dict[gene].sort(key=takeSeventh, reverse=True)
     return dict(intron_dict), dict(intron_prop_dict)
+
+#Generate on intron retention proportions for control sample
+def select_ctrl_intron_prop(intron_dict, prop_list):
+    intron_prop_dict_ctrl = OrderedDict()
+    for intron in intron_dict:
+        intron_prop_dict_ctrl[intron] = float(np.random.choice(prop_list).strip())/100
+    return dict(intron_prop_dict_ctrl)
 
 #Make transcripts
 def make_transcripts(gene_list, intron_dict, transcript_dict, ref_file, cdna_file, strand_dict):
@@ -270,7 +309,7 @@ def coverage_check(gene_list, fpkm_dict, lowest_FPKM, num_read, cdna_size_dict, 
         suggest_num_read = math.ceil(((10/(corrected_lowest_FPKM*(short_cdna/1000)))*1000000)/(1-ran_read))*2
         suggest_min_FPKM = round((10/((num_read*(1-ran_read)/2)/1000000))/(short_cdna/1000)*correction_ratio,3)
         if suggest_num_read < 1000000000:
-            sys.exit("ERROR: Insufficient coverage, please either increase number of reads to %s or increase the lower FPKM limit to %s." % (suggest_num_read, suggest_min_FPKM))
+            sys.exit("ERROR: Insufficient coverage, please either increase minimum number of reads to %s or increase the lower FPKM limit to %s." % (suggest_num_read, suggest_min_FPKM))
         else:
             sys.exit("ERROR: Insufficient coverage, please increase the lower FPKM limit to %s." % (suggest_min_FPKM))
         #print("ERROR: Insufficient coverage, please either increase number of reads to %s or increase the lower FPKM limit to %s." % (suggest_num_read, suggest_min_FPKM))
@@ -292,7 +331,7 @@ def check_cdna_len(cdna_size_dict, ins_length, ins_length_stdev, fasta_dict):
             del fasta_dict[transcript + '-i']
         except:
             pass
-    return fasta_dict
+    return fasta_dict, omit_gene_len_list
 
 #Write transcriptome FASTA file
 def write_fasta(fasta_dict, output_dir):

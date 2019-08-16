@@ -1,5 +1,5 @@
 """
-Composer.py
+Compose.py
 
 This module writes FASTQ reads.
 
@@ -47,10 +47,10 @@ def make_out_files_many(output_dir, transcript_frag_dict, intron_reps, control_r
 
 #Make output files
 def make_out_files(output_dir, transcript_frag_dict, replicate):
-    if replicate[0] == 'i':
-        rep_name = 'intron_rep' + str(int(replicate[-1]) + 1)
-    elif replicate[0] == 'c':
-        rep_name = 'control_rep' + str(int(replicate[-1]) + 1)
+    if replicate[0] == 'A':
+        rep_name = 'sample_A_rep' + str(int(replicate[-1]) + 1)
+    elif replicate[0] == 'B':
+        rep_name = 'sample_B_rep' + str(int(replicate[-1]) + 1)
     read1 = os.path.join(output_dir, 'sim_' + rep_name + '_read1.fastq')
     read2 = os.path.join(output_dir, 'sim_' + rep_name + '_read2.fastq')
     read1_write = open(read1, 'w')
@@ -73,12 +73,14 @@ def read_index_chunks(transcript_frag_dict, fastq_dict1):
         latest_index[transcript_id] = 0 
     for rep in transcript_frag_dict:
         for transcript_id in transcript_frag_dict[rep]:
-            #try:
+            #try: #At low transcript simulation amounts, sometimes DWGSIM does not simulate some transcripts.
             chunks_dict[rep][transcript_id] = [latest_index[transcript_id], min(transcript_frag_dict[rep][transcript_id] + latest_index[transcript_id], len(fastq_dict1[transcript_id]))]
+            latest_index[transcript_id] = min(transcript_frag_dict[rep][transcript_id] + latest_index[transcript_id], len(fastq_dict1[transcript_id]))
+            #except:
+                #chunks_dict[rep][transcript_id] = [0, 0]
             #except:
                 #chunks_dict[rep][transcript_id] = []
                 #chunks_dict[rep][transcript_id].append([latest_index[transcript_id], min(transcript_frag_dict[rep][transcript_id] + latest_index[transcript_id], len(fastq_dict1[transcript_id]))])
-            latest_index[transcript_id] = min(transcript_frag_dict[rep][transcript_id] + latest_index[transcript_id], len(fastq_dict1[transcript_id]))
     return dict(chunks_dict)
 
 #Update Fastq lists

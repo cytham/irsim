@@ -1,5 +1,5 @@
 """
-Angel.py
+Report.py
 
 This module creates the final report file.
 
@@ -70,31 +70,34 @@ def output_info_total(intron_list, intron_dict, real_frag_dict, read_junc_dict, 
     out.close()
 
 #Pre-output info
-def pre_output_info(intron_list, strand_dict):
+def pre_output_info(intron_list, strand_dict, omit_gene_len_list):
     first_line = '#Gene_id\tTranscript_id\tIntron_no.\tCoordinates\tStrand\t'
     outline_dict = OrderedDict()
     for intron in intron_list:
-        outline_dict[intron[0] + '-' + str(intron[6])] = intron[0] + '\t' + intron[1] + '\t' + str(intron[6]) + '\t' + intron[2] + ':' + str(intron[3]) + '-' + str(intron[4]) + '\t' + strand_dict[intron[0]] + '\t'
+        if intron[1] not in omit_gene_len_list:
+            outline_dict[intron[0] + '-' + str(intron[6])] = intron[0] + '\t' + intron[1] + '\t' + str(intron[6]) + '\t' + intron[2] + ':' + str(intron[3]) + '-' + str(intron[4]) + '\t' + strand_dict[intron[0]] + '\t'
     return first_line, dict(outline_dict)
 
 #Create output info per replicate
-def output_info_rep(first_line, outline_dict, intron_list, read_junc_dict, rep_names_dict):
+def output_info_rep(first_line, outline_dict, intron_list, read_junc_dict, rep_names_dict, omit_gene_len_list):
     new_rep_names_dict = OrderedDict()
     for rep in rep_names_dict:
-        new_rep_names_dict[rep] = rep_names_dict[rep][0].upper() + '_rep' + rep_names_dict[rep][-1]
+        new_rep_names_dict[rep] = rep[0].upper() + '_rep' + rep_names_dict[rep][-1]
     for rep in new_rep_names_dict:
         first_line += new_rep_names_dict[rep] + '_EE\t' + new_rep_names_dict[rep] + '_EI\t' + new_rep_names_dict[rep] + '_IE\t' + new_rep_names_dict[rep] + '_%IRratio\t'
     for intron in intron_list:
-        for rep in rep_names_dict:
-            outline_dict[intron[0] + '-' + str(intron[6])] += str(read_junc_dict[rep][str(intron[1]) + '-ee' + str(intron[6])]) + '\t' + str(read_junc_dict[rep][str(intron[1]) + '-ei' + str(intron[6])]) + '\t' + str(read_junc_dict[rep][str(intron[1]) + '-ie' + str(intron[6])]) + '\t' + str(round(statistics.mean([read_junc_dict[rep][str(intron[1]) + '-ei' + str(intron[6])], read_junc_dict[rep][str(intron[1]) + '-ie' + str(intron[6])]])/(statistics.mean([read_junc_dict[rep][str(intron[1]) + '-ei' + str(intron[6])], read_junc_dict[rep][str(intron[1]) + '-ie' + str(intron[6])]]) + read_junc_dict[rep][str(intron[1]) + '-ee' + str(intron[6])] + 0.000000001)*100, 1)) + '\t'
+        if intron[1] not in omit_gene_len_list:
+            for rep in rep_names_dict:
+                outline_dict[intron[0] + '-' + str(intron[6])] += str(read_junc_dict[rep][str(intron[1]) + '-ee' + str(intron[6])]) + '\t' + str(read_junc_dict[rep][str(intron[1]) + '-ei' + str(intron[6])]) + '\t' + str(read_junc_dict[rep][str(intron[1]) + '-ie' + str(intron[6])]) + '\t' + str(round(statistics.mean([read_junc_dict[rep][str(intron[1]) + '-ei' + str(intron[6])], read_junc_dict[rep][str(intron[1]) + '-ie' + str(intron[6])]])/(statistics.mean([read_junc_dict[rep][str(intron[1]) + '-ei' + str(intron[6])], read_junc_dict[rep][str(intron[1]) + '-ie' + str(intron[6])]]) + read_junc_dict[rep][str(intron[1]) + '-ee' + str(intron[6])] + 0.000000001)*100, 1)) + '\t'
     return first_line, dict(outline_dict)
 
 #Create final output
-def output_info_final(first_line, outline_dict, intron_list, intron_dict, output_dir, fpkm_dict, intron_prop_dict):
+def output_info_final(first_line, outline_dict, intron_list, intron_dict, output_dir, fpkm_dict, intron_prop_dict, intron_prop_dict_ctrl, omit_gene_len_list):
     #Update some dicts
     for intron in intron_list:
         if intron[0] not in intron_prop_dict:
             intron_prop_dict[intron[0]] = 0.0
+            intron_prop_dict_ctrl[intron[0]] = 0.0
         if intron[0] not in fpkm_dict:
             fpkm_dict[intron[0]] = 0
     #Make intron_num_dict
@@ -106,19 +109,20 @@ def output_info_final(first_line, outline_dict, intron_list, intron_dict, output
             except:
                 intron_num_dict[gene]= []
                 intron_num_dict[gene].append(intron[6])
-    first_line += 'Simulated_ratio\tEstimated_gene_FPKM\n'
+    first_line += 'Simulated_ratio_A\tSimulated_ratio_B\tEstimated_gene_FPKM\n'
     output_path = os.path.join(output_dir, 'report.tsv')
     out = open(output_path, 'w')
     out.write(first_line)
     for intron in intron_list:
-        if intron[0] in intron_num_dict:
-            if intron[6] in intron_num_dict[intron[0]]:
-                outline_dict[intron[0] + '-' + str(intron[6])] += str(intron_prop_dict[intron[0]]) + '\t' + str(round(fpkm_dict[intron[0]], 3)) + '\n'
+        if intron[1] not in omit_gene_len_list:
+            if intron[0] in intron_num_dict:
+                if intron[6] in intron_num_dict[intron[0]]:
+                    outline_dict[intron[0] + '-' + str(intron[6])] += str(intron_prop_dict[intron[0]]) + '\t' + str(intron_prop_dict_ctrl[intron[0]]) + '\t' + str(round(fpkm_dict[intron[0]], 3)) + '\n'
+                else:
+                    outline_dict[intron[0] + '-' + str(intron[6])] += '0.00\t0.00\t' + str(round(fpkm_dict[intron[0]], 3)) + '\n'
             else:
-                outline_dict[intron[0] + '-' + str(intron[6])] += '0.00\t' + str(round(fpkm_dict[intron[0]], 3)) + '\n'
-        else:
-            outline_dict[intron[0] + '-' + str(intron[6])] += '0.00\t' + str(round(fpkm_dict[intron[0]], 3)) + '\n'
-        out.write(outline_dict[intron[0] + '-' + str(intron[6])])
+                outline_dict[intron[0] + '-' + str(intron[6])] += '0.00\t0.00\t' + str(round(fpkm_dict[intron[0]], 3)) + '\n'
+            out.write(outline_dict[intron[0] + '-' + str(intron[6])])
     out.close()
 
 #Compress fastq multi
