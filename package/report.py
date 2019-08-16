@@ -98,6 +98,7 @@ def output_info_final(first_line, outline_dict, intron_list, intron_dict, output
     for intron in intron_list:
         if intron[0] not in intron_prop_dict:
             intron_prop_dict[intron[0]] = 0.0
+        if intron[0] not in intron_prop_dict_ctrl:
             intron_prop_dict_ctrl[intron[0]] = 0.0
         if intron[0] not in fpkm_dict:
             fpkm_dict[intron[0]] = 0
