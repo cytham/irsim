@@ -1,5 +1,9 @@
 """
+<<<<<<< HEAD
 Parse.py
+=======
+Guardian.py
+>>>>>>> bf74459f3a0a63d6111d4330784cb74ee0c9c908
 
 This module checks for input files and their format.
 

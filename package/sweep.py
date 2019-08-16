@@ -1,5 +1,9 @@
 """
+<<<<<<< HEAD
 Sweep.py
+=======
+Sweeper.py
+>>>>>>> bf74459f3a0a63d6111d4330784cb74ee0c9c908
 
 This module clears memory and removes unused files.
 
