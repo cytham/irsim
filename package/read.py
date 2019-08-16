@@ -1,9 +1,6 @@
 """
-<<<<<<< HEAD
+
 Read.py
-=======
-Reader.py
->>>>>>> bf74459f3a0a63d6111d4330784cb74ee0c9c908
 
 This module extracts FASTQ reads from DWGSIM.
 
